@@ -1,0 +1,363 @@
+---
+title: "p8105_hw3_xx2485"
+author: "Xiaoni Xu"
+date: "2024-10-14"
+output: github_document
+---
+
+Loading needed packages:
+```{r, message = FALSE}
+library(p8105.datasets)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(viridis)
+library(janitor)
+```
+
+## Problem 1
+
+Loading the NY NOAA data
+```{r}
+data("ny_noaa") 
+
+noaa_data <- ny_noaa
+```
+
+Get the structure and size of the dataset
+```{r}
+noaa_size <- dim(noaa_data)
+noaa_structure <- str(noaa_data)
+```
+
+Summarize key variables
+```{r}
+key_variables_summary <- noaa_data %>%
+  summarise(
+    num_unique_ids = n_distinct(id),
+    date_range = range(date, na.rm = TRUE),
+    total_rows = n(),
+    prcp_missing = sum(is.na(prcp)),
+    snow_missing = sum(is.na(snow)),
+    snwd_missing = sum(is.na(snwd)),
+    tmax_missing = sum(is.na(tmax)),
+    tmin_missing = sum(is.na(tmin))
+  )
+
+```
+
+The dataset `noaa_data` consists of `r nrow(noaa_data)` rows and `r ncol(noaa_data)` columns. It is structured as a tibble. 
+
+The columns are as follows:
+
+* id: A character vector representing the unique identifier for weather stations (e.g., "US1NYAB0001").
+
+* date: A date column indicating the specific date for each observation , spanning from `r min(noaa_data$date)` to `r max(noaa_data$date)`.`
+
+* prcp: An integer column representing the amount of precipitation recorded in tenths of mm, with `r sum(is.na(noaa_data$prcp))` missing values.
+
+* snow: An integer column indicating the amount of snow recorded in mm, with `r sum(is.na(noaa_data$snow))` missing values.
+
+* snwd: An integer column for snow depth in mm, which has `r sum(is.na(noaa_data$snwd))` missing values.
+
+* tmax: A character column for the maximum temperature in tenths of degrees C, with `r sum(is.na(noaa_data$tmax))` missing values.
+
+* tmin: A character column for the minimum temperature in tenths of degrees C, which also has `r sum(is.na(noaa_data$tmin))` missing values.
+
+
+Data cleaning
+```{r}
+# Convert necessary columns to numeric
+noaa_data <- noaa_data %>%
+  mutate(
+    prcp = as.numeric(prcp),
+    snow = as.numeric(snow),
+    snwd = as.numeric(snwd),
+    tmax = as.numeric(tmax),
+    tmin = as.numeric(tmin)
+  )
+
+# Create separate variables for year, month, and day
+noaa_data_cleaned <- noaa_data %>%
+  mutate(
+    year = year(date),
+    month = month(date),
+    day = day(date),
+    
+    # Convert units
+    prcp = prcp / 10,  # Convert precipitation from tenths of mm to mm
+    snow = snow,       # Snowfall is already in mm
+    snwd = snwd,       # Snow depth is already in mm
+    tmax = tmax / 10,  # Convert max temperature from tenths of degrees C to degrees C
+    tmin = tmin / 10   # Convert min temperature from tenths of degrees C to degrees C
+  )
+
+# Analyze snowfall data
+# Calculate the most commonly observed snowfall values
+snowfall_summary <- noaa_data_cleaned %>%
+  filter(!is.na(snow)) %>%  # Remove NA values analysis
+  count(snow) %>%
+  arrange(desc(n))  # Sort by frequency
+
+# Display the most commonly observed snowfall values
+most_common_snowfall <- head(snowfall_summary, 10)  # Get the top 10 values
+
+# Print results
+print(most_common_snowfall)
+```
+Description of the Most Commonly Observed Snowfall Values
+
+The analysis of the snowfall data reveals the following most commonly observed values:
+
+1. **`0 mm`**: This is the most frequently recorded snowfall value, with **`r 2008508`** occurrences. 
+  
+2. **`25 mm`**: The second most common value, with **`r 31022`** occurrences.
+
+3. **`13 mm`**: Observed **`r 23095`** times.
+
+4. **`51 mm`**: This value appears **`r 18274`** times.
+
+5. **`76 mm`**: Recorded **`r 10173`** times.
+
+6. **`8 mm`**: This value has **`r 9962`** occurrences.
+
+7. **`5 mm`**: Recorded **`r 9748`** times.
+
+The predominance of 0 mm snowfall days indicates that a significant portion of the dataset comprises observations from periods without snowfall. This pattern is typical in many climates including New York, where snow is not a regular occurrence during the entire year. 
+
+
+Make a two-panel plot showing the average max temperature in January and in July in each station across years
+```{r}
+# Calculate average max temperature for January and July
+
+avg_temp <- noaa_data_cleaned %>%
+  mutate(month = month(date)) %>%
+  filter(month %in% c(1, 7)) %>%  
+  group_by(id, month, year) %>%  # Group by station ID, month, and year
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>%  # Calculate average max temperature
+  ungroup()
+
+# Create two-panel plot
+ggplot(avg_temp, aes(x = year, y = avg_tmax)) +
+  geom_line(aes(group = id), alpha = 0.6) +  # Line for each station without color mapping
+  facet_wrap(~ month, scales = "fixed", labeller = labeller(month = c("1" = "January", "7" = "July"))) +
+  labs(title = "Average Max Temperature in January and July Across Weather Stations",
+       x = "Year",
+       y = "Average Max Temperature (tenths of degrees C)") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove legend
+```
+For the strucure of the plots, there a clear distinction in average maximum temperatures between January and July. January temperatures are usually lower, while July temperatures are higher, reflecting seasonal variations. There is no significance trends in both months over the years whether showing general decrease or increase in temperature.
+
+Visually, in January, there is a data point in around 1982 that showed significantly lower temperatures (-17 C approximately), and in July, there are a few points in 1987, 2004, and 2007 that showed significantly lower teamperatures (below 20 C). Here are the codes to find all outliers in the dataset (both too high or too low) from `print(outliers_summary)`:
+
+Finding outliers
+```{r}
+# Function to identify outliers
+identify_outliers <- function(data) {
+  Q1 <- quantile(data$avg_tmax, 0.25, na.rm = TRUE)
+  Q3 <- quantile(data$avg_tmax, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  outliers <- data %>%
+    filter(avg_tmax < lower_bound | avg_tmax > upper_bound) %>%
+    select(id, year, month, avg_tmax)
+  
+  return(outliers)
+}
+
+# Apply the function to identify outliers for each month
+january_outliers <- avg_temp %>%
+  filter(month == 1) %>%
+  identify_outliers()
+
+july_outliers <- avg_temp %>%
+  filter(month == 7) %>%
+  identify_outliers()
+
+# Combine results for better visibility
+outliers_summary <- bind_rows(
+  january_outliers %>% mutate(month = "January"),
+  july_outliers %>% mutate(month = "July")
+)
+
+# Print the outliers
+print(outliers_summary)
+```
+
+Make a two-panel plot showing (i) tmax vs tmin for the full dataset; and (ii) make a plot showing the distribution of snowfall values greater than 0 and less than 100 separately by year
+
+```{r}
+# Create a hexbin plot for tmax vs. tmin
+tmax_tmin_plot <- ggplot(noaa_data_cleaned, aes(x = tmax, y = tmin)) +
+  geom_hex(aes(fill = ..count..), color = "white") +  # Use hexagonal bins and fill based on count
+  scale_fill_viridis_c(option = "C") +  # Apply Viridis color scale for counts
+  labs(title = "Hexbin Plot of Tmax vs. Tmin",
+       x = "Maximum Temperature (tenths of degrees C)",
+       y = "Minimum Temperature (tenths of degrees C)",
+       fill = "Count") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+# Filter and prepare data for snowfall distribution
+snowfall_distribution <- noaa_data_cleaned %>%
+  filter(snow > 0 & snow < 100) %>%  # Filter for snowfall between 0 and 100
+  mutate(year = year(date)) 
+
+# Create a violin plot for snowfall distribution by year
+snowfall_plot <- ggplot(snowfall_distribution, aes(x = factor(year), y = snow)) +
+  geom_violin(trim = FALSE, fill = "lightblue") +  # Use violin plot
+  labs(title = "Distribution of Snowfall Values (0 < Snow < 100) by Year",
+       x = "Year",
+       y = "Snowfall (mm)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis text for better readability
+
+# Combine the plots into one two-panel plot using patchwork
+combined_plot <- tmax_tmin_plot + snowfall_plot
+
+combined_plot
+```
+
+## Problem 2
+Load, tidy, and merge the datasets
+```{r}
+covar_data <- read_csv("data/nhanes_covar.csv", skip = 4) %>%
+  clean_names() 
+accel_data <- read_csv("data/nhanes_accel.csv") %>%
+  clean_names()
+
+
+# exclude participants less than 21 years of age and missing demographic data
+cleaned_covar_data <- covar_data %>%
+  filter(age >= 21) %>%  # Assuming 'age' is a variable in covar_data
+  drop_na()              # Remove rows with any missing demographic data
+
+# merge datasets
+merged_data <- cleaned_covar_data %>%
+  inner_join(accel_data, by = "seqn")  # Change 'seqn' to the actual identifier
+
+
+# encode data with reasonable variable classes
+merged_data <- merged_data %>%
+  mutate(sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),  
+         education = factor(education, 
+                            levels = c(1, 2, 3), 
+                            labels = c("Less than high school", "High school equivalent", "More than high school"),  # Adjusting for education
+                            ordered = TRUE)
+  )
+```
+
+Produce a reader-friendly table for the number of men and women in each education category
+```{r}
+education_summary <- merged_data %>%
+  group_by(education, sex) %>%
+  summarize(count = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = sex, values_from = count, values_fill = 0)
+
+# Print the summary table
+print(education_summary)
+```
+
+For less than high school, there is a relatively balanced representation of genders in this educational category, with slightly more females than males.
+
+For high school equivalent, there is a notable difference, with more males (35) compared to females (23). This suggests that males are more likely to have attained at least a high school diploma compared to females in this dataset.
+
+For more than high school, females (59) outnumber males (56). This shift might indicate that women in this dataset have a slightly higher tendency to pursue education beyond high school, which could reflect broader trends in educational attainment favoring women in recent years.
+
+Overall, the data shows variation in educational attainment between males and females across the different categories. While the gender distribution is relatively balanced in the "Less than high school" category, males dominate the "High school equivalent" category, while females lead in the "More than high school" category.
+
+The trends observed in this dataset may reflect societal changes in educational attainment over time, where females are increasingly achieving higher education levels compared to males.
+
+
+
+Create a visualization of the age distributions for men and women in each education category
+```{r}
+age_distribution_plot <- ggplot(merged_data, aes(x = age, fill = sex)) +
+  geom_density(alpha = 0.5) +  # Use density plots for age distributions
+  facet_wrap(~ education) +     # Create separate plots for each education category
+  labs(title = "Age Distributions for Men and Women by Education Category",
+       x = "Age",
+       y = "Density") +
+  scale_fill_manual(values = c("#2ca9e1", "#e0662d"), labels = c("Men", "Women")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())  # Remove legend title
+
+# Print the age distribution plot
+print(age_distribution_plot)
+```
+
+For 'less than high school', there is no significant difference in age between men and women, but there is a difference in 'high school equivalent', with a lot more men compared to women at a younger age (20-30) while women outnumber men at the ages after 65. For 'more than high school', there is a significant difference at age 20-30 with a lot more women than men.
+
+
+Aggregate across minutes to create a total activity variable for each participant
+```{r}
+total_activity <- merged_data %>%
+  rowwise() %>%
+  mutate(total_activity = sum(c_across(starts_with("min")), na.rm = TRUE))
+
+```
+
+Plot these total activities (y-axis) against age (x-axis)
+```{r}
+activity_plot <- ggplot(total_activity, aes(x = age, y = total_activity, color = sex)) +
+  geom_point(alpha = 0.6) +  
+  geom_smooth(method = "loess", se = FALSE) + 
+  facet_wrap(~ education, nrow = 1) + 
+  labs(title = "Total Activity vs Age by Education Level",
+       x = "Age (years)",
+       y = "Total Activity (MIMS)") +
+  scale_color_manual(values = c("#2ca9e1", "#e0662d"), labels = c("Men", "Women")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())  # Remove legend title
+
+# Print the activity plot
+print(activity_plot)
+```
+
+The plot presents the relationship between total activity and age, divided across threepanels by education level: “Less than high school”, “High school equivalent”, and “Morethan high school”. In general, total activity decreases with age. For less than high school, the women has higher activity until at around 40 years old. For high school equivalent, women in general has higher total activity. For more than high school, women also has higher total activity than men. Higher education levels suggest a higher and steadier trend in activity across ages.
+
+
+Make a three-panel plot that shows the 24-hour activity time courses for each education level and use color to indicate sex. 
+```{r}
+# Reshape the data to long format for activity time course
+activity_time_course <- merged_data %>%
+  select(seqn, education, sex, starts_with("min")) %>%  
+  pivot_longer(cols = starts_with("min"),               # Reshape from wide to long format
+               names_to = "minute",
+               values_to = "activity") %>%
+  mutate(minute = as.numeric(gsub("min", "", minute)))  # Convert minute names to numeric
+
+# Create the plot for 24-hour activity time courses
+activity_plot <- ggplot(activity_time_course, aes(x = minute, y = activity, color = sex)) +
+  geom_line(stat = "summary", fun = "mean", aes(group = sex), alpha = 0.4, size = 1.2) +  # Plot mean activity over time
+  geom_smooth(method = "loess", se = FALSE, linetype = "solid", size = 1.5) +
+  facet_wrap(~ education, nrow = 1) +  # Separate panels for each education level
+  scale_color_manual(values = c("#2ca9e1", "#e0662d"), labels = c("Male", "Female")) +  # Custom colors
+  labs(title = "24-Hour Activity Time Courses by Education Level and Sex",
+       x = "Minute of Day",
+       y = "Mean Activity (MIMS)") +
+  theme_minimal() +
+  theme(legend.title = element_blank(),  # Remove legend title
+        legend.position = "top")  # Position legend at the top
+
+
+print(activity_plot)
+```
+
+The plot shows the average activity levels of participants throughout the day, separated by three education levels and sex. 
+
+* Less than high school: Men and women have similar activity patterns of increasing from 250 to 750 minutes (morning) and lowers steadily after 750 minutes (noon). The activity is lowest after 1200 minutes (night). 
+
+* High school equivalent: Women overall have higher activity levels than men, with the general pattern similar to that of the 'less than high school' group. Men show significantly lower activity level compared to the less than high school education group.
+
+* More than high school: Women overall have even higher activity levels than men, with the general pattern similar to that of the 'less than high school' group. Women in this group also has longer period of time of higher activity levels.
+
+Individuals with higher education lower but more consistent activity throughout the day, and higher educated women tend to have higher activity than men.
+
+
+## Problem 3
