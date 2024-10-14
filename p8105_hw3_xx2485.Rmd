@@ -53,17 +53,17 @@ The columns are as follows:
 
 * id: A character vector representing the unique identifier for weather stations (e.g., "US1NYAB0001").
 
-* date: A date column indicating the specific date for each observation , spanning from `r min(noaa_data$date)` to `r max(noaa_data$date)`.`
+* date: A date column indicating the specific date for each observation, spanning from `r min(noaa_data$date)` to `r max(noaa_data$date)`.
 
-* prcp: An integer column representing the amount of precipitation recorded in tenths of mm, with `r sum(is.na(noaa_data$prcp))` missing values.
+* prcp: An integer column representing the amount of precipitation recorded in tenths of mm ranging from `r min(noaa_data$prcp, na.rm = TRUE)` to `r max(noaa_data$prcp, na.rm = TRUE)`, with an average of `r mean(noaa_data$prcp, na.rm = TRUE)` , with `r sum(is.na(noaa_data$prcp))` missing values.
 
-* snow: An integer column indicating the amount of snow recorded in mm, with `r sum(is.na(noaa_data$snow))` missing values.
+* snow: An integer column indicating the amount of snow recorded in mm with an average of `r mean(noaa_data$snow, na.rm = TRUE)` and a maximum of `r max(noaa_data$snow, na.rm = TRUE)`, with `r sum(is.na(noaa_data$snow))` missing values.
 
-* snwd: An integer column for snow depth in mm, which has `r sum(is.na(noaa_data$snwd))` missing values.
+* snwd: An integer column for snow depth in mm  ranging from `r min(noaa_data$snwd, na.rm = TRUE)` to `r max(noaa_data$snwd, na.rm = TRUE)`, which has `r sum(is.na(noaa_data$snwd))` missing values.
 
 * tmax: A character column for the maximum temperature in tenths of degrees C, with `r sum(is.na(noaa_data$tmax))` missing values.
 
-* tmin: A character column for the minimum temperature in tenths of degrees C, which also has `r sum(is.na(noaa_data$tmin))` missing values.
+* tmin: A character column for the minimum temperature in tenths of degrees C, which has `r sum(is.na(noaa_data$tmin))` missing values.
 
 
 Data cleaning
@@ -218,20 +218,26 @@ snowfall_plot <- ggplot(snowfall_distribution, aes(x = factor(year), y = snow)) 
   theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis text for better readability
 
 # Combine the plots into one two-panel plot using patchwork
-combined_plot <- tmax_tmin_plot + snowfall_plot
+combined_plot <- tmax_tmin_plot / snowfall_plot
+
+
+ggsave("combined_plot.png", plot = combined_plot, width = 6, height = 12)  # Adjust width and height as needed
+
 
 combined_plot
 ```
 
 ## Problem 2
 Load, tidy, and merge the datasets
-```{r}
+```{r, message = FALSE}
 covar_data <- read_csv("data/nhanes_covar.csv", skip = 4) %>%
   clean_names() 
 accel_data <- read_csv("data/nhanes_accel.csv") %>%
   clean_names()
+```
 
 
+```{r}
 # exclude participants less than 21 years of age and missing demographic data
 cleaned_covar_data <- covar_data %>%
   filter(age >= 21) %>%  # Assuming 'age' is a variable in covar_data
@@ -361,3 +367,246 @@ Individuals with higher education lower but more consistent activity throughout 
 
 
 ## Problem 3
+
+Load, tidy, and merge the datasets
+```{r, message = FALSE}
+# import the datasets
+jan_2020 <- read_csv("data/Jan 2020 Citi.csv") %>% clean_names() %>% mutate(year = 2020, month = 1)
+jan_2024 <- read_csv("data/Jan 2024 Citi.csv") %>% clean_names() %>% mutate(year = 2024, month = 1)
+july_2020 <- read_csv("data/July 2020 Citi.csv") %>% clean_names() %>% mutate(year = 2020, month = 7)
+july_2024 <- read_csv("data/July 2024 Citi.csv") %>% clean_names() %>% mutate(year = 2024, month = 7)
+```
+
+
+```{r}
+# combine the datasets
+citi_data <- bind_rows(jan_2020, jan_2024, july_2020, july_2024)
+
+# clean and tidy the data
+citi_cleaned <- citi_data %>%
+  # Convert columns to appropriate types
+  mutate(
+    rideable_type = factor(rideable_type, levels = c("classic_bike", "electric_bike")),
+    weekdays = factor(weekdays, levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")),
+    member_casual = factor(member_casual, levels = c("casual", "member"))
+  ) %>%
+  # Drop any rows with missing values if necessary
+  drop_na()
+
+summary(citi_cleaned)
+```
+
+Overview: The dataset contains a total of `r nrow(citi_cleaned)` rides, indicating a substantial sample size for analysis.
+
+Variable descriptions:
+
+1. ride_id:
+   - Type: Character
+   - Description: Unique identifier for each ride.
+   - Length: `r nrow(citi_cleaned)` entries.
+   
+2. rideable_type:
+   - Type: Character
+   - Categories:
+     - classic_bike: `r sum(citi_cleaned$rideable_type == "classic_bike")` rides (approximately `r round(sum(citi_cleaned$rideable_type == "classic_bike") / nrow(citi_cleaned) * 100, 2)`% of the dataset)
+     - electric_bike: `r sum(citi_cleaned$rideable_type == "electric_bike")` rides (approximately `r round(sum(citi_cleaned$rideable_type == "electric_bike") / nrow(citi_cleaned) * 100, 2)`% of the dataset)
+   - This variable shows a predominance of classic bike usage over electric bikes.
+
+3. weekdays:
+   - Type: Factor with levels representing days of the week.
+   - Distribution:
+     - Sunday: `r sum(citi_cleaned$weekdays == "Sunday")` rides
+     - Monday: `r sum(citi_cleaned$weekdays == "Monday")` rides
+     - Tuesday: `r sum(citi_cleaned$weekdays == "Tuesday")` rides
+     - Wednesday: `r sum(citi_cleaned$weekdays == "Wednesday")` rides
+     - Thursday: `r sum(citi_cleaned$weekdays == "Thursday")` rides
+     - Friday: `r sum(citi_cleaned$weekdays == "Friday")` rides
+     - Saturday: `r sum(citi_cleaned$weekdays == "Saturday")` rides
+   - Observation: The highest number of rides occurs on Wednesdays, while Sundays have the fewest rides.
+
+4. duration:
+   - Type: Numeric
+   - Range: 
+     - Minimum: `r min(citi_cleaned$duration, na.rm = TRUE)` minutes
+     - Maximum: `r max(citi_cleaned$duration, na.rm = TRUE)` minutes
+   - Summary Statistics:
+     - 1st Quartile: `r quantile(citi_cleaned$duration, 0.25, na.rm = TRUE)`
+     - Median: `r median(citi_cleaned$duration, na.rm = TRUE)`
+     - Mean: `r mean(citi_cleaned$duration, na.rm = TRUE)`
+     - 3rd Quartile: `r quantile(citi_cleaned$duration, 0.75, na.rm = TRUE)`
+   - Observation: The average ride duration is approximately `r round(mean(citi_cleaned$duration, na.rm = TRUE), 2)` minutes, with a significant range suggesting some very short rides (under `r 2` minutes) and longer rides approaching `r 4` hours.
+
+5. start_station_name:
+   - Type: Character
+   - Description: Names of stations where rides begin.
+   - Length: `r nrow(citi_cleaned)` entries.
+   - The dataset captures a wide range of starting locations across NYC.
+   
+6. end_station_name:
+   - Type: Character
+   - Description: Names of stations where rides end.
+   - Length: `r nrow(citi_cleaned)` entries.
+   - Similar to the start station, it represents various destinations.
+
+7. member_casual:
+   - Type: Factor
+   - Categories:
+     - casual: `r sum(citi_cleaned$member_casual == "casual")` rides (approximately `r round(sum(citi_cleaned$member_casual == "casual") / nrow(citi_cleaned) * 100, 2)`% of the dataset)
+     - member: `r sum(citi_cleaned$member_casual == "member")` rides (approximately `r round(sum(citi_cleaned$member_casual == "member") / nrow(citi_cleaned) * 100, 2)`% of the dataset)
+   - Observation: The majority of rides are taken by members, indicating a preference for regular users of the bike-sharing system.
+
+8. year:
+   - Type: Numeric
+   - Range: `r min(citi_cleaned$year)` to `r max(citi_cleaned$year)`
+   - Summary Statistics:
+     - Min: `r min(citi_cleaned$year)`
+     - Max: `r max(citi_cleaned$year)`
+   - The dataset includes rides from multiple years, indicating a time span for analysis.
+
+9. month:
+   - Type: Numeric
+   - Range: `r min(citi_cleaned$month)` to `r max(citi_cleaned$month)` (January to July)
+   - Summary Statistics:
+     - Mean: `r mean(citi_cleaned$month, na.rm = TRUE)`
+   - This variable helps understand seasonal variations in bike usage.
+
+Overall Insights
+
+- The dataset reflects a robust usage of the NYC Citi Bike system, with a significant proportion of rides taken by members compared to casual users.
+
+- The distribution of rides across the week suggests a higher utilization on weekdays, particularly on Wednesdays, which could be useful for operational planning.
+
+- The ride durations indicate that most rides are relatively short, typical for urban commuting.
+
+- The inclusion of data across multiple years allows for temporal analysis, potentially identifying trends in bike usage over time.
+
+
+Produce a reader-friendly table showing the total number of rides in each combination of year and month separating casual riders and Citi Bike members
+```{r}
+# Create a summary table showing the total number of rides by year, month, and member type
+rides_summary <- citi_cleaned %>%
+  group_by(year, month, member_casual) %>%
+  summarize(total_rides = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = member_casual, values_from = total_rides, values_fill = 0)
+
+# Display the summary table
+print(rides_summary)
+```
+Observations:
+
+- In January 2020, there were a total of `r 980` casual rides compared to `r 11418` member rides, indicating that most riders were members during this month.
+  
+- By July 2020, casual rides increased significantly to `r 5625`, while member rides rose to `r 15388`, suggesting a seasonal uptick in biking activity, likely influenced by warmer weather.
+
+- In January 2024, the number of casual rides decreased to `r 2094`, whereas member rides rose to `r 16705`, highlighting a continued trend of member loyalty.
+
+- By July 2024, casual rides peaked at `r 10843`, while member rides surged to `r 36200`, indicating a strong demand for the bike-sharing service during the summer months and reflecting an overall growth in bike-sharing usage.
+
+Overall, the data suggests that member usage remains consistently high across months and years, while casual rides fluctuate based on seasonal conditions, particularly in warmer months.
+
+Make a table showing the 5 most popular starting stations for July 2024
+```{r}
+# Filter for July 2024 rides
+july_2024_data <- citi_cleaned %>%
+  filter(year == 2024, month == 7)
+
+# Count rides originating from each start station
+popular_stations <- july_2024_data %>%
+  group_by(start_station_name) %>%
+  summarize(number_of_rides = n(), .groups = 'drop') %>%
+  arrange(desc(number_of_rides)) %>%  # Arrange in descending order
+  head(5)  # Get the top 5 stations
+
+# Display the summary table
+print(popular_stations)
+```
+
+Make a plot to investigate the effects of day of the week, month, and year on median ride duration
+```{r}
+# Calculate median ride duration by year, month, and day of the week
+median_duration_summary <- citi_cleaned %>%
+  group_by(year, month, weekdays) %>%
+  summarize(median_duration = median(duration, na.rm = TRUE), .groups = 'drop')
+
+# Create a faceted plot for median ride duration
+ride_duration_plot <- ggplot(median_duration_summary, aes(x = weekdays, y = median_duration, fill = factor(month))) +
+  geom_bar(stat = "identity", position = "dodge") +  # Use bar chart for median duration
+  facet_wrap(~ year) +  # Separate panels for each year
+  labs(title = "Effects of Day of the Week, Month, and Year on Median Ride Duration",
+       x = "Day of the Week",
+       y = "Median Ride Duration (minutes)",
+       fill = "Month") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Angle x-axis text for readability
+
+
+# Print the plot
+print(ride_duration_plot)
+
+```
+
+Observations from the plot:
+- In 2020, median for the ride duration is significantly higher on Saturdays and Sundays both in January and July. The medians are relatively the same in January 2024, while in July 2024 the median ride duration is higher on weekends.
+
+- In general, July has higher median duration than January in both years. It is possibly due to warmer weather favoring longer bike rides.
+
+- In January, the median ride duration is similar between 2020 and 2024, with 2020 having slightly higher median. In July, 2020 shows a significantly higher median.
+
+
+For data in 2024, make a figure that shows the impact of month, membership status, and bike type on the distribution of ride duration
+```{r}
+# Filter the dataset for the year 2024
+data_2024 <- citi_cleaned %>%
+  filter(year == 2024)
+
+# Create a violin plot for ride duration by month, membership status, and bike type
+ride_duration_violin_plot <- ggplot(data_2024, aes(x = factor(month), y = duration, fill = member_casual)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +  # Violin plot for distribution
+  geom_point(stat = "summary", fun = "mean", size = 2, 
+             aes(fill = member_casual), color = "black", shape = 21, show.legend = TRUE) +  # Mean point with legend
+  facet_wrap(~ rideable_type) +  # Separate panels for bike types
+  labs(title = "Impact of Month, Membership Status, and Bike Type on Ride Duration (2024)",
+       x = "Month",
+       y = "Ride Duration (minutes)",
+       fill = "Membership Status") +
+  theme_minimal() +
+  scale_x_discrete(labels = c("1" = "January", 
+                               "7" = "July")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  # Angle x-axis text for readability
+  coord_cartesian(ylim = c(0, 100))  # Set y-axis limits to cut off at 100 minutes
+
+
+# Print the plot
+print(ride_duration_violin_plot)
+```
+Rides longer than 100 minutes are cut off due to outliers. The uncut plot is shown after the comment.
+
+- There is a slight general increase in ride duration in July than January.
+- Members tend to have shorter rides compared to casual riders, as they pay less for each ride supposedly, thus tend to use citibike for shorter rides. This trend is more significant for classic bikes compared to electric bikes.
+- Classic bikes in general have longer rides compared to electric bikes for casual users, while the ride duration is similar between classical and electric bikes for members.
+
+
+
+```{r}
+# Create a violin plot for ride duration by month, membership status, and bike type
+ride_duration_violin_plot_uncut <- ggplot(data_2024, aes(x = factor(month), y = duration, fill = member_casual)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +  # Violin plot for distribution
+  geom_point(stat = "summary", fun = "mean", size = 2, 
+             aes(fill = member_casual), color = "black", shape = 21, show.legend = TRUE) +  # Mean point with legend
+  facet_wrap(~ rideable_type) +  # Separate panels for bike types
+  labs(title = "Impact of Month, Membership Status, and Bike Type on Ride Duration (2024)",
+       x = "Month",
+       y = "Ride Duration (minutes)",
+       fill = "Membership Status") +
+  theme_minimal() +
+  scale_x_discrete(labels = c("1" = "January", 
+                               "7" = "July")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   # Angle x-axis text for readability
+
+
+# Print the plot
+print(ride_duration_violin_plot_uncut)
+```
+
+
+
